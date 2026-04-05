@@ -9,8 +9,29 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use App\Models\StudentVerification;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable([
+    'student_number',
+    'first_name',
+    'middle_name',
+    'last_name',
+    'suffix',
+    'sex',
+    'date_of_birth',
+    'email',
+    'contact_number',
+    'college',
+    'program',
+    'organization',
+    'year_level',
+    'academic_status',
+    'password',
+    'role_id',
+    'profile_picture',
+    'account_status',
+    'verification_version',
+    ])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable
 {
@@ -22,11 +43,25 @@ class User extends Authenticatable
      *
      * @return array<string, string>
      */
+    protected $primaryKey = 'id';
     protected function casts(): array
     {
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+    public function role()
+    {
+        return $this->belongsTo(Role::class);
+    }
+    public function verifications()
+    {
+        return $this->hasMany(StudentVerification::class);
+    }
+
+    public function latestVerification()
+    {
+        return $this->hasOne(StudentVerification::class)->latestOfMany();
     }
 }
