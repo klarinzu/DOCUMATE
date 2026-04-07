@@ -3,13 +3,17 @@
 use Illuminate\Support\Facades\Route;
 use App\Livewire\Auth\Register;
 use App\Livewire\Auth\Login;
+use App\Livewire\Admin\ClearanceMonitoring;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Livewire\Admin\ManageUsers;
+use App\Livewire\Student\Dashboard as StudentDashboard;
 use App\Livewire\Student\NewTransaction;
 use App\Livewire\Admin\Templates\TemplateManager;
 use App\Livewire\Admin\Templates\TemplateEditor;
 use App\Livewire\VerifyStudent;
 use App\Livewire\Admin\Dashboard;
+use App\Livewire\Profile\ProfilePage;
+use App\Http\Controllers\StudentVerificationController;
 
 
 // Public
@@ -18,14 +22,15 @@ Route::get('/', fn () => view('welcome'));
 Route::get('/register', Register::class)->name('register');
 Route::get('/login', Login::class)->name('login');
 Route::middleware(['auth'])->group(function () {
+    Route::get('/profile', ProfilePage::class)->name('profile');
 
     // Verification page (always accessible if needed)
     Route::get('/verify', VerifyStudent::class)->name('verify.page');
 
     // Protected pages
     Route::middleware(['verified.student'])->group(function () {
-
-        Route::get('/dashboard', fn () => view('dashboard'));
+        Route::get('/dashboard', StudentDashboard::class)->name('dashboard');
+        Route::get('/student/dashboard', StudentDashboard::class)->name('student.dashboard');
 
         // other system pages
     });
@@ -41,7 +46,7 @@ Route::middleware(['auth'])->group(function () {
 
 
     });
-    Route::post('/upload-e-slip', [VerifyStudent::class, 'uploadESlip'])
+    Route::post('/upload-e-slip', [StudentVerificationController::class, 'uploadESlip'])
     ->middleware('auth');
 
     // ADMIN
@@ -51,6 +56,9 @@ Route::middleware(['auth'])->group(function () {
 
         Route::get('/admin/users', ManageUsers::class)
             ->name('admin.users');
+
+        Route::get('/admin/clearance-monitoring', ClearanceMonitoring::class)
+            ->name('admin.clearance-monitoring');
 
         Route::get('/admin/templates', TemplateManager::class)
             ->name('admin.templates');

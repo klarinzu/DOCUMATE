@@ -63,6 +63,19 @@
                 </select>
             </div>
 
+            {{-- Year Sort --}}
+            <div class="relative">
+                <select wire:model.live="yearFilter"
+                    class="px-4 py-2 pr-10 rounded-xl border border-gray-200 bg-white/60 backdrop-blur text-sm appearance-none focus:ring-2 focus:ring-gray-900/20 outline-none">
+
+                    <option value="">Year Level</option>
+                    <option value="1">1st Year</option>
+                    <option value="2">2nd Year</option>
+                    <option value="3">3rd Year</option>
+                    <option value="4">4th Year</option>
+                </select>
+            </div>
+
         </div>
     </div>
 
@@ -79,9 +92,10 @@
                     <th class="px-4 py-4 text-left font-medium">Student No.</th>
                     <th class="px-4 py-4 text-left font-medium">Program</th>
                     <th class="px-4 py-4 text-left font-medium">Organization</th>
+                    <th class="px-4 py-4 text-left font-medium">Year</th>
+                    <th class="px-4 py-4 text-left font-medium">Status</th>
                     <th class="px-4 py-4 text-left font-medium">Role</th>
                     <th class="px-4 py-4 text-left font-medium">Modify</th>
-                    <th class="px-4 py-4 text-left font-medium">Status</th>
                     <th class="px-4 py-4 text-left font-medium">Action</th>
                 </tr>
             </thead>
@@ -137,6 +151,21 @@
                             {{ $user->organization ?? '-' }}
                         </td>
 
+                        {{-- Year --}}
+                        <td class="px-4 py-4 text-gray-600">
+                            {{ $user->year_level ?? '-' }}
+                        </td>
+
+                        {{-- Status --}}
+                        <td class="px-4 py-4">
+                            <span class="text-xs font-medium px-2 py-1 rounded-full 
+                                {{ $user->account_status === 'active'
+                                    ? 'bg-[#2A57B4]/10 text-[#2A57B4]'
+                                    : 'bg-red-50 text-red-600' }}">
+                                {{ ucfirst($user->account_status ?? 'inactive') }}
+                            </span>
+                        </td>
+
                         {{-- Role --}}
                         <td class="px-4 py-4">
                             <span class="px-3 py-1 rounded-full text-xs font-medium {{ $colors[$roleName] ?? 'bg-gray-100 text-gray-600' }}">
@@ -157,16 +186,6 @@
                                 @endforeach
 
                             </select>
-                        </td>
-
-                        {{-- Status --}}
-                        <td class="px-4 py-4">
-                            <span class="text-xs font-medium px-2 py-1 rounded-full 
-                                {{ $user->account_status === 'active'
-                                    ? 'bg-[#2A57B4]/10 text-[#2A57B4]'
-                                    : 'bg-red-50 text-red-600' }}">
-                                {{ ucfirst($user->account_status ?? 'inactive') }}
-                            </span>
                         </td>
 
                         {{-- Action --}}

@@ -14,6 +14,7 @@ class ManageUsers extends Component
     public $search = '';
     public $roleFilter = '';
     public $statusFilter = '';
+    public string $yearFilter = '';
 
     public $selectedUser = null;
     public $showModal = false;
@@ -23,6 +24,7 @@ class ManageUsers extends Component
     public function updatingSearch() { $this->resetPage(); }
     public function updatingRoleFilter() { $this->resetPage(); }
     public function updatingStatusFilter() { $this->resetPage(); }
+    public function updatingYearFilter() { $this->resetPage(); }
 
     
     public function openModal($userId)
@@ -94,6 +96,13 @@ class ManageUsers extends Component
                 $status = $this->statusFilter == '1' ? 'active' : 'inactive';
                 $query->where('account_status', $status);
             })
+            ->when($this->yearFilter !== '', function ($query) {
+                $query->where('year_level', $this->yearFilter);
+            })
+            ->orderBy('organization')
+            ->orderByRaw("CASE WHEN year_level REGEXP '^[0-9]+$' THEN CAST(year_level AS UNSIGNED) ELSE 999 END ASC")
+            ->orderBy('last_name')
+            ->orderBy('first_name')
             ->paginate(15);
 
         $roles = Role::orderBy('role_name')->get();
