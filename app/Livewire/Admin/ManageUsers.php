@@ -2,10 +2,11 @@
 
 namespace App\Livewire\Admin;
 
+use App\Models\Role;
+use App\Models\User;
+use Illuminate\Support\Str;
 use Livewire\Component;
 use Livewire\WithPagination;
-use App\Models\User;
-use App\Models\Role;
 
 class ManageUsers extends Component
 {
@@ -18,6 +19,8 @@ class ManageUsers extends Component
 
     public $selectedUser = null;
     public $showModal = false;
+    public $userPendingDeletion = null;
+    public bool $showDeleteModal = false;
 
     protected $paginationTheme = 'tailwind';
 
@@ -38,6 +41,75 @@ class ManageUsers extends Component
         $this->showModal = false;
         $this->selectedUser = null;
     }
+
+    public function confirmDelete(int $userId): void
+    {
+        $user = User::with('role')->findOrFail($userId);
+
+        if ($user->id === auth()->id()) {
+            session()->flash('message', 'You cannot delete your own account.');
+
+            return;
+        }
+
+        if ($this->isLastAdmin($user)) {
+            session()->flash('message', 'You cannot delete the last administrator account.');
+
+            return;
+        }
+
+        $this->userPendingDeletion = $user;
+        $this->showDeleteModal = true;
+    }
+
+    public function cancelDelete(): void
+    {
+        $this->showDeleteModal = false;
+        $this->userPendingDeletion = null;
+    }
+
+    public function deleteUser(): void
+    {
+        if (! $this->userPendingDeletion) {
+            return;
+        }
+
+        $user = User::with('role')->find($this->userPendingDeletion->id);
+
+        if (! $user) {
+            $this->cancelDelete();
+            session()->flash('message', 'User record was already removed.');
+
+            return;
+        }
+
+        if ($user->id === auth()->id()) {
+            $this->cancelDelete();
+            session()->flash('message', 'You cannot delete your own account.');
+
+            return;
+        }
+
+        if ($this->isLastAdmin($user)) {
+            $this->cancelDelete();
+            session()->flash('message', 'You cannot delete the last administrator account.');
+
+            return;
+        }
+
+        $deletedName = $this->displayName($user);
+
+        if ($this->selectedUser?->id === $user->id) {
+            $this->closeModal();
+        }
+
+        $user->delete();
+        $this->cancelDelete();
+        $this->resetPageIfEmpty();
+
+        session()->flash('message', $deletedName . ' was removed successfully.');
+    }
+
     public function updateRole($userId, $roleId)
     {
         $user = User::findOrFail($userId);
@@ -68,9 +140,38 @@ class ManageUsers extends Component
         session()->flash('message', 'Status updated.');
     }
 
-    public function render()
+    protected function isLastAdmin(User $user): bool
     {
-        $users = User::with('role')
+        if (Str::lower((string) ($user->role->role_name ?? '')) !== 'admin') {
+            return false;
+        }
+
+        return User::query()
+            ->whereHas('role', function ($query) {
+                $query->where('role_name', 'Admin');
+            })
+            ->count() <= 1;
+    }
+
+    protected function displayName(User $user): string
+    {
+        return trim(preg_replace('/\s+/', ' ', implode(' ', array_filter([
+            $user->first_name,
+            $user->middle_name,
+            $user->last_name,
+        ])))) ?: ('User #' . $user->id);
+    }
+
+    protected function resetPageIfEmpty(): void
+    {
+        if ($this->page > 1 && $this->getUsersQuery()->paginate(15, page: $this->page)->isEmpty()) {
+            $this->previousPage();
+        }
+    }
+
+    protected function getUsersQuery()
+    {
+        return User::with('role')
             ->when($this->search, function ($query) {
                 $query->where(function ($q) {
                     $q->where('first_name', 'like', '%' . $this->search . '%')
@@ -102,8 +203,12 @@ class ManageUsers extends Component
             ->orderBy('organization')
             ->orderByRaw("CASE WHEN year_level REGEXP '^[0-9]+$' THEN CAST(year_level AS UNSIGNED) ELSE 999 END ASC")
             ->orderBy('last_name')
-            ->orderBy('first_name')
-            ->paginate(15);
+            ->orderBy('first_name');
+    }
+
+    public function render()
+    {
+        $users = $this->getUsersQuery()->paginate(15);
 
         $roles = Role::orderBy('role_name')->get();
 

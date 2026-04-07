@@ -19,14 +19,24 @@
     @php
         $inactive = auth()->check() && auth()->user()->account_status !== 'active';
         $role = auth()->user()->role->role_name ?? null;
+        $studentDashboardActive = request()->routeIs('dashboard') || request()->routeIs('student.dashboard');
+        $studentClearanceStatusActive = request()->routeIs('student.clearance-status');
         $profileActive = request()->routeIs('profile');
         $clearanceMonitoringActive = request()->routeIs('admin.clearance-monitoring');
+        $officerClearanceTaggingActive = request()->routeIs('officer.clearance');
         $profileUrl = route('profile');
+        $clearanceStatusUrl = route('student.clearance-status');
+        $clearanceTaggingUrl = route('officer.clearance');
         $fullName = trim(preg_replace('/\s+/', ' ', implode(' ', array_filter([
             auth()->user()->first_name ?? null,
             auth()->user()->middle_name ?? null,
             auth()->user()->last_name ?? null,
         ]))));
+        $sidebarFirstName = auth()->user()->first_name ?: ($fullName ?: 'User');
+        $roleLabel = auth()->user()->role->role_name ?? 'User';
+        $sidebarSub = auth()->user()->student_number
+            ? auth()->user()->student_number . ' | ' . $roleLabel
+            : (auth()->user()->email ? auth()->user()->email . ' | ' . $roleLabel : $roleLabel);
     @endphp
 
     {{-- SIDEBAR --}}
@@ -67,7 +77,7 @@
                         <span>Documents</span>
                     </a>
 
-                    <a href="/clearance-status" class="sidebar-link">
+                    <a href="{{ $clearanceStatusUrl }}" class="sidebar-link {{ $studentClearanceStatusActive ? 'active' : '' }}">
                         <i class='bx bx-check-circle'></i>
                         <span>Clearance Status</span>
                     </a>
@@ -105,12 +115,12 @@
                         <span>Documents</span>
                     </a>
 
-                    <a href="/clearance-status" class="sidebar-link" data-tooltip="Clearance Status">
+                    <a href="{{ $clearanceStatusUrl }}" class="sidebar-link {{ $studentClearanceStatusActive ? 'active' : '' }}" data-tooltip="Clearance Status">
                         <i class='bx bx-check-circle'></i>
                         <span>Clearance Status</span>
                     </a>
 
-                    <a href="/clearance-tagging" class="sidebar-link" data-tooltip="Clearance Tagging">
+                    <a href="{{ $clearanceTaggingUrl }}" class="sidebar-link {{ $officerClearanceTaggingActive ? 'active' : '' }}" data-tooltip="Clearance Tagging">
                         <i class='bx bx-check-shield'></i>
                         <span>Clearance Tagging</span>
                     </a>
@@ -187,13 +197,8 @@
                 class="profile-img">
 
                 <div class="profile-info">
-                    <p class="name">{{ $fullName ?: auth()->user()->first_name }}</p>
-
-                    @if($role === 'Admin')
-                        <p class="sub">{{ auth()->user()->email }}</p>
-                    @else
-                        <p class="sub">{{ auth()->user()->student_number }}</p>
-                    @endif
+                    <p class="name">{{ $sidebarFirstName }}</p>
+                    <p class="sub">{{ $sidebarSub }}</p>
                 </div>
             </a>
         </div>

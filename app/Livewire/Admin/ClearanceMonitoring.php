@@ -2,8 +2,10 @@
 
 namespace App\Livewire\Admin;
 
+use App\Models\ClearanceStatus;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Livewire\Component;
@@ -23,6 +25,9 @@ class ClearanceMonitoring extends Component
     public ?array $selectedRecord = null;
     public int $currentPage = 1;
     public int $perPage = 10;
+
+    protected const MONITORED_ROLES = ['Student', 'Officer'];
+    protected const REVIEWER_ROLES = ['Officer', 'Admin'];
 
     public function updated($property): void
     {
@@ -103,15 +108,52 @@ class ClearanceMonitoring extends Component
         $this->showDetailsModal = false;
     }
 
+    public function updateStatus(int $userId, string $status): void
+    {
+        if (! in_array($status, ClearanceStatus::STATUSES, true)) {
+            return;
+        }
+
+        $monitoredUserIds = $this->monitoredUsersQuery()->pluck('id');
+        $userIndex = $monitoredUserIds->search($userId);
+
+        if ($userIndex === false) {
+            return;
+        }
+
+        $user = User::with(['role', 'clearanceStatus'])
+            ->whereKey($userId)
+            ->whereHas('role', fn (Builder $query) => $query->whereIn('role_name', self::MONITORED_ROLES))
+            ->first();
+
+        if (! $user) {
+            return;
+        }
+
+        $defaults = $this->defaultStatusData($user, (int) $userIndex);
+        $organization = $user->organization ?: 'Unassigned';
+
+        $user->clearanceStatuses()->create([
+            'tagged_by' => auth()->id(),
+            'organization' => $organization,
+            'status' => $status,
+            'academic_year' => $user->clearanceStatus?->academic_year ?: $defaults['academic_year'],
+            'semester' => $user->clearanceStatus?->semester ?: $defaults['semester'],
+            'remarks' => $this->remarksFor($status, $organization),
+            'tagged_at' => now(),
+        ]);
+
+        if (($this->selectedRecord['user_id'] ?? null) === $userId) {
+            $this->selectedRecord = $this->buildRecords()->firstWhere('user_id', $userId);
+        }
+
+        session()->flash('message', 'Clearance status updated.');
+    }
+
     protected function buildRecords(): Collection
     {
-        $users = User::with('role')
-            ->whereHas('role', function ($query) {
-                $query->whereIn('role_name', ['Student', 'Officer']);
-            })
-            ->orderBy('organization')
-            ->orderBy('last_name')
-            ->orderBy('first_name')
+        $users = $this->monitoredUsersQuery()
+            ->with(['role', 'clearanceStatus.taggedByUser'])
             ->get([
                 'id',
                 'student_number',
@@ -127,34 +169,19 @@ class ClearanceMonitoring extends Component
                 'created_at',
             ]);
 
-        $reviewers = User::with('role')
-            ->whereHas('role', function ($query) {
-                $query->whereIn('role_name', ['Officer', 'Admin']);
-            })
-            ->orderBy('last_name')
-            ->orderBy('first_name')
-            ->get(['first_name', 'middle_name', 'last_name'])
-            ->map(fn (User $user) => $this->fullName($user))
-            ->filter()
-            ->values();
+        $reviewers = $this->reviewerNames();
 
-        if ($reviewers->isEmpty()) {
-            $reviewers = collect(['System Administrator']);
-        }
-
-        $statusCycle = ['Cleared', 'Pending', 'Uncleared'];
-        $semesterOptions = [$this->primarySemester(), $this->secondarySemester()];
-        $academicYearOptions = [$this->primaryAcademicYear(), $this->secondaryAcademicYear()];
-
-        return $users->values()->map(function (User $user, int $index) use ($reviewers, $statusCycle, $semesterOptions, $academicYearOptions) {
-            $status = $statusCycle[$index % count($statusCycle)];
-            $semester = $semesterOptions[$index % count($semesterOptions)];
-            $academicYear = $academicYearOptions[$index % count($academicYearOptions)];
-            $taggedAt = Carbon::parse($user->created_at ?? now())
-                ->addDays($index + 5)
-                ->setTime(9 + ($index % 7), $index % 2 === 0 ? 15 : 45);
-            $organization = $user->organization ?: 'Unassigned';
-            $taggedBy = $reviewers[$index % $reviewers->count()];
+        return $users->values()->map(function (User $user, int $index) use ($reviewers) {
+            $defaults = $this->defaultStatusData($user, $index, $reviewers);
+            $clearanceStatus = $user->clearanceStatus;
+            $organization = $user->organization ?: ($clearanceStatus?->organization ?: $defaults['organization']);
+            $status = $clearanceStatus?->status ?: $defaults['status'];
+            $academicYear = $clearanceStatus?->academic_year ?: $defaults['academic_year'];
+            $semester = $clearanceStatus?->semester ?: $defaults['semester'];
+            $taggedAt = $clearanceStatus?->tagged_at ?: $defaults['tagged_at'];
+            $taggedBy = $clearanceStatus?->taggedByUser
+                ? $this->fullName($clearanceStatus->taggedByUser)
+                : $defaults['tagged_by'];
 
             return [
                 'user_id' => $user->id,
@@ -168,14 +195,12 @@ class ClearanceMonitoring extends Component
                 'year_level' => $this->formatYearLevel((string) $user->year_level),
                 'year_sort_value' => ctype_digit((string) $user->year_level) ? (int) $user->year_level : 99,
                 'tagged_by' => $taggedBy,
-                'tagged_at' => $taggedAt->format('F j, Y, g:i a'),
-                'tagged_date' => $taggedAt->toDateString(),
-                'remarks' => $this->remarksFor($status, $organization),
+                'tagged_at' => $this->formatTaggedAt($taggedAt),
+                'tagged_date' => $this->taggedDate($taggedAt),
+                'remarks' => $clearanceStatus?->remarks ?: $this->remarksFor($status, $organization),
                 'email' => $user->email ?: 'No email on file',
                 'account_status' => ucfirst((string) ($user->account_status ?: 'inactive')),
             ];
-        })->sortBy(function (array $record) {
-            return strtolower($record['organization'] . '|' . $record['student_name']);
         })->values();
     }
 
@@ -277,11 +302,83 @@ class ClearanceMonitoring extends Component
     protected function remarksFor(string $status, string $organization): string
     {
         return match ($status) {
-            'Cleared' => 'No pending organization obligations for ' . $organization . '.',
-            'Pending' => 'Awaiting final officer review for ' . $organization . '.',
-            'Uncleared' => 'Outstanding clearance requirements remain under ' . $organization . '.',
+            ClearanceStatus::STATUS_CLEARED => 'No pending organization obligations for ' . $organization . '.',
+            ClearanceStatus::STATUS_PENDING => 'Awaiting final officer review for ' . $organization . '.',
+            ClearanceStatus::STATUS_UNCLEARED => 'Outstanding clearance requirements remain under ' . $organization . '.',
             default => 'No remarks available.',
         };
+    }
+
+    protected function monitoredUsersQuery(): Builder
+    {
+        return User::query()
+            ->whereHas('role', fn (Builder $query) => $query->whereIn('role_name', self::MONITORED_ROLES))
+            ->orderBy('organization')
+            ->orderByRaw("CASE WHEN year_level REGEXP '^[0-9]+$' THEN CAST(year_level AS UNSIGNED) ELSE 999 END ASC")
+            ->orderBy('last_name')
+            ->orderBy('first_name');
+    }
+
+    protected function reviewerNames(): Collection
+    {
+        $reviewers = User::query()
+            ->whereHas('role', fn (Builder $query) => $query->whereIn('role_name', self::REVIEWER_ROLES))
+            ->orderBy('last_name')
+            ->orderBy('first_name')
+            ->get(['first_name', 'middle_name', 'last_name'])
+            ->map(fn (User $user) => $this->fullName($user))
+            ->filter()
+            ->values();
+
+        return $reviewers->isNotEmpty()
+            ? $reviewers
+            : collect(['System Administrator']);
+    }
+
+    protected function defaultStatusData(User $user, int $index, ?Collection $reviewers = null): array
+    {
+        $reviewerNames = $reviewers?->values();
+
+        if (! $reviewerNames || $reviewerNames->isEmpty()) {
+            $reviewerNames = collect(['System Administrator']);
+        }
+
+        $statusCycle = ClearanceStatus::STATUSES;
+        $semesterOptions = [$this->primarySemester(), $this->secondarySemester()];
+        $academicYearOptions = [$this->primaryAcademicYear(), $this->secondaryAcademicYear()];
+        $taggedAt = Carbon::parse($user->created_at ?? now())
+            ->addDays($index + 5)
+            ->setTime(9 + ($index % 7), $index % 2 === 0 ? 15 : 45);
+        $organization = $user->organization ?: 'Unassigned';
+
+        return [
+            'organization' => $organization,
+            'status' => $statusCycle[$index % count($statusCycle)],
+            'academic_year' => $academicYearOptions[$index % count($academicYearOptions)],
+            'semester' => $semesterOptions[$index % count($semesterOptions)],
+            'tagged_by' => $reviewerNames[$index % $reviewerNames->count()],
+            'tagged_at' => $taggedAt,
+        ];
+    }
+
+    protected function formatTaggedAt(Carbon|string|null $taggedAt): string
+    {
+        if (! $taggedAt) {
+            return 'Not yet tagged';
+        }
+
+        return ($taggedAt instanceof Carbon ? $taggedAt : Carbon::parse($taggedAt))
+            ->format('F j, Y, g:i a');
+    }
+
+    protected function taggedDate(Carbon|string|null $taggedAt): string
+    {
+        if (! $taggedAt) {
+            return now()->toDateString();
+        }
+
+        return ($taggedAt instanceof Carbon ? $taggedAt : Carbon::parse($taggedAt))
+            ->toDateString();
     }
 
     public function render()
@@ -300,7 +397,7 @@ class ClearanceMonitoring extends Component
             'organizations' => $allRecords->pluck('organization')->unique()->sort()->values(),
             'academicYears' => $allRecords->pluck('academic_year')->unique()->sortDesc()->values(),
             'semesters' => $allRecords->pluck('semester')->unique()->values(),
-            'statuses' => collect(['Cleared', 'Pending', 'Uncleared']),
+            'statuses' => collect(ClearanceStatus::STATUSES),
             'totalPages' => $totalPages,
         ])->layout('layouts.app', ['title' => 'Clearance Monitoring']);
     }

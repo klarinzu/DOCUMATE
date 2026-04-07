@@ -1,10 +1,16 @@
 <div class="space-y-6">
+    @if (session()->has('message'))
+        <div class="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
+            {{ session('message') }}
+        </div>
+    @endif
+
     <div>
         <h1 class="text-4xl font-extrabold tracking-tight text-slate-900">
-            Clearance Monitoring
+            {{ $pageHeading ?? 'Clearance Monitoring' }}
         </h1>
         <p class="mt-1 text-base text-slate-500">
-            View of all the clearance status submitted per academic organization
+            {{ $pageDescription ?? 'View of all the clearance status submitted per academic organization' }}
         </p>
     </div>
 
@@ -122,18 +128,44 @@
                         @forelse($records as $record)
                             @php
                                 $tableStatusClass = match ($record['status']) {
-                                    'Cleared' => 'font-bold text-green-600',
-                                    'Pending' => 'font-bold text-orange-500',
-                                    'Uncleared' => 'font-bold text-red-600',
-                                    default => 'font-bold text-slate-500',
+                                    'Cleared' => 'border-green-200 bg-green-50 text-green-700',
+                                    'Pending' => 'border-orange-200 bg-orange-50 text-orange-600',
+                                    'Uncleared' => 'border-red-200 bg-red-50 text-red-700',
+                                    default => 'border-slate-200 bg-white text-slate-600',
+                                };
+                                $statusChevronClass = match ($record['status']) {
+                                    'Cleared' => 'text-green-700',
+                                    'Pending' => 'text-orange-600',
+                                    'Uncleared' => 'text-red-700',
+                                    default => 'text-slate-500',
                                 };
                             @endphp
-                            <tr class="hover:bg-[#f8fbff]">
+                            <tr class="hover:bg-[#f8fbff]" wire:key="clearance-row-{{ $record['user_id'] }}">
                                 <td class="px-4 py-3">{{ $record['student_name'] }}</td>
                                 <td class="px-4 py-3">{{ $record['student_number'] }}</td>
                                 <td class="px-4 py-3">{{ $record['organization'] }}</td>
                                 <td class="px-4 py-3">{{ $record['year_level'] }}</td>
-                                <td class="px-4 py-3 {{ $tableStatusClass }}">{{ $record['status'] }}</td>
+                                <td class="px-4 py-3">
+                                    <div class="relative w-[150px]">
+                                        <select wire:change="updateStatus({{ $record['user_id'] }}, $event.target.value)"
+                                                class="w-full appearance-none rounded-lg border px-3 py-2 pr-9 text-sm font-extrabold outline-none transition focus:border-[#2A57B4] focus:ring-4 focus:ring-[#2A57B4]/10 {{ $tableStatusClass }}">
+                                            @foreach($statuses as $status)
+                                                @php
+                                                    $optionClass = match ($status) {
+                                                        'Cleared' => 'bg-green-50 text-green-700',
+                                                        'Pending' => 'bg-orange-50 text-orange-600',
+                                                        'Uncleared' => 'bg-red-50 text-red-700',
+                                                        default => 'bg-white text-slate-600',
+                                                    };
+                                                @endphp
+                                                <option value="{{ $status }}"
+                                                        class="font-extrabold {{ $optionClass }}"
+                                                        @selected($record['status'] === $status)>{{ $status }}</option>
+                                            @endforeach
+                                        </select>
+                                        <i class='bx bx-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-lg {{ $statusChevronClass }}'></i>
+                                    </div>
+                                </td>
                                 <td class="px-4 py-3">{{ $record['academic_year'] }}</td>
                                 <td class="px-4 py-3">{{ $record['semester'] }}</td>
                                 <td class="px-4 py-3 text-center">

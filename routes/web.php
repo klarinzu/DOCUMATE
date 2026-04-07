@@ -6,6 +6,8 @@ use App\Livewire\Auth\Login;
 use App\Livewire\Admin\ClearanceMonitoring;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Livewire\Admin\ManageUsers;
+use App\Livewire\Officer\ClearanceTagging;
+use App\Livewire\Student\ClearanceStatusPage;
 use App\Livewire\Student\Dashboard as StudentDashboard;
 use App\Livewire\Student\NewTransaction;
 use App\Livewire\Admin\Templates\TemplateManager;
@@ -28,9 +30,10 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/verify', VerifyStudent::class)->name('verify.page');
 
     // Protected pages
-    Route::middleware(['verified.student'])->group(function () {
+    Route::middleware(['verified.student', 'role:student,officer'])->group(function () {
         Route::get('/dashboard', StudentDashboard::class)->name('dashboard');
         Route::get('/student/dashboard', StudentDashboard::class)->name('student.dashboard');
+        Route::get('/clearance-status', ClearanceStatusPage::class)->name('student.clearance-status');
 
         // other system pages
     });
@@ -73,7 +76,7 @@ Route::middleware(['auth'])->group(function () {
 
     // OFFICER
     Route::middleware('role:officer')->group(function () {
-        Route::view('/clearance-tagging', 'officer.clearance_tagging')
+        Route::get('/clearance-tagging', ClearanceTagging::class)
             ->name('officer.clearance');
     });
 
