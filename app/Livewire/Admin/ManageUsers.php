@@ -164,7 +164,9 @@ class ManageUsers extends Component
 
     protected function resetPageIfEmpty(): void
     {
-        if ($this->page > 1 && $this->getUsersQuery()->paginate(15, page: $this->page)->isEmpty()) {
+        $currentPage = $this->getPage();
+
+        if ($currentPage > 1 && ! $this->getUsersQuery()->forPage($currentPage, 15)->exists()) {
             $this->previousPage();
         }
     }
